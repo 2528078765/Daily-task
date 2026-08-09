@@ -1,0 +1,7 @@
+node_modules/
+src-tauri/target/
+src-tauri/target-ta/
+src-tauri/gen/schemas/
+logs/
+*.exe
+每日任务侧边栏-安装包.exe

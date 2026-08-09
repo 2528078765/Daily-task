@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>每日任务侧边栏</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="desktop-bg" aria-hidden="true"></div>
+
+  <aside id="app" class="sidebar" data-dock="full">
+    <div class="strip" data-action="expand" role="button" aria-label="展开侧边栏" title="展开侧边栏">
+      <div class="strip-handle" aria-hidden="true"></div>
+      <div class="strip-progress" data-role="strip-progress" title="今日完成度"></div>
+    </div>
+
+    <div class="panel">
+      <header class="panel-header">
+        <div class="date-block">
+          <div class="date" id="dateText">8月9日 星期日</div>
+          <div class="date-sub" id="dateSub">2026年</div>
+        </div>
+        <div class="header-actions">
+          <button class="icon-btn" id="lockBtn" data-action="lock" aria-label="锁定" title="锁定">
+            <i data-lucide="lock"></i>
+          </button>
+          <button class="icon-btn" id="applyTemplateBtn" data-action="apply-templates" aria-label="应用模板" title="应用模板">
+            <i data-lucide="copy-check"></i>
+          </button>
+          <button class="icon-btn" id="settingsBtn" data-action="settings" aria-label="设置" title="设置">
+            <i data-lucide="settings-2"></i>
+          </button>
+          <button class="icon-btn" data-action="collapse" aria-label="收起侧边栏" title="收起侧边栏">
+            <i data-lucide="panel-right-close"></i>
+          </button>
+        </div>
+      </header>
+
+      <section class="progress-section">
+        <div>
+          <h1>今日任务</h1>
+          <div class="progress-sub"><span id="doneCount">0</span><span class="slash">/</span><span id="totalCount">0</span></div>
+        </div>
+        <div class="ring-wrap" title="今日完成度">
+          <svg class="ring" viewBox="0 0 44 44" aria-hidden="true">
+            <circle class="ring-track" cx="22" cy="22" r="17"></circle>
+            <circle class="ring-value" id="ringValue" cx="22" cy="22" r="17"></circle>
+          </svg>
+          <span class="ring-text" id="ringText">0%</span>
+        </div>
+      </section>
+
+      <nav class="tabs" aria-label="视图">
+        <button class="tab" data-action="tab" data-view="today">今天</button>
+        <button class="tab" data-action="tab" data-view="history">历史</button>
+        <button class="tab" data-action="tab" data-view="templates">模板</button>
+      </nav>
+
+      <main class="task-scroll" id="taskScroll">
+        <div id="taskLists"></div>
+      </main>
+
+      <footer class="add-area">
+        <div class="periods">
+          <button class="chip active" data-action="add-period" data-period="all-day">全天</button>
+          <button class="chip" data-action="add-period" data-period="morning">上午</button>
+          <button class="chip" data-action="add-period" data-period="afternoon">下午</button>
+          <button class="chip" data-action="add-period" data-period="evening">晚上</button>
+        </div>
+        <div class="add-row">
+          <input class="add-input" id="taskInput" type="text" maxlength="120" autocomplete="off" placeholder="添加今天的任务">
+          <button class="add-btn" id="addBtn" data-action="add" aria-label="添加任务" title="添加任务">
+            <i data-lucide="plus"></i>
+          </button>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">时间</span>
+          <div class="time-picker">
+            <button class="time-trigger" id="timeTrigger" data-action="toggle-time-picker" aria-label="选择时间" title="选择时间">
+              <i data-lucide="clock" class="icon-12"></i>
+              <span id="timeText">时间</span>
+            </button>
+            <div class="time-popover" id="timePopover" hidden>
+              <div class="time-columns">
+                <div class="time-col">
+                  <div class="time-col-label">时</div>
+                  <div class="time-column" id="hourColumn"></div>
+                </div>
+                <div class="time-col">
+                  <div class="time-col-label">分</div>
+                  <div class="time-column" id="minuteColumn"></div>
+                </div>
+              </div>
+              <div class="time-popover-actions">
+                <button class="link-btn" data-action="clear-time">清除</button>
+                <button class="mini-btn primary" data-action="confirm-time">确定</button>
+              </div>
+            </div>
+          </div>
+          <div class="priorities">
+            <button class="prio-chip" data-action="add-priority" data-priority="0"><i class="dot low"></i>低</button>
+            <button class="prio-chip active" data-action="add-priority" data-priority="1"><i class="dot mid"></i>中</button>
+            <button class="prio-chip" data-action="add-priority" data-priority="2"><i class="dot high"></i>高</button>
+          </div>
+        </div>
+      </footer>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+      <div class="settings-popover" id="settingsPopover" hidden>
+        <div class="setting-row">
+          <span>主题</span>
+          <button class="icon-btn sm" data-action="theme" id="themeBtn" aria-label="切换主题" title="切换主题">
+            <i data-lucide="sun"></i>
+          </button>
+        </div>
+        <div class="setting-row">
+          <span>停靠位置</span>
+          <div class="seg" data-role="dock-seg">
+            <button class="seg-btn" data-action="dock" data-dock="top">上缘</button>
+            <button class="seg-btn active" data-action="dock" data-dock="full">拉满</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span>收起方向</span>
+          <div class="seg" data-role="collapse-seg">
+            <button class="seg-btn" data-action="collapse-direction" data-direction="right">往右收</button>
+            <button class="seg-btn" data-action="collapse-direction" data-direction="top">往上收</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span>鼠标离开自动收起</span>
+          <button class="toggle" data-action="auto-collapse" data-role="auto-toggle" aria-label="自动收起" title="自动收起"></button>
+        </div>
+        <div class="setting-row" id="autostartRow">
+          <span>开机自启</span>
+          <button class="toggle" data-action="toggle-autostart" data-role="autostart-toggle" aria-label="开机自启" title="开机自启"></button>
+        </div>
+        <div class="setting-row">
+          <span>面板纯色</span>
+          <div class="color-control">
+            <input type="color" id="panelColorInput" data-action="panel-color" value="#202326" aria-label="选择纯色" title="选择纯色">
+            <button class="link-btn" data-action="panel-color-default">默认</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span>不透明度</span>
+          <div class="opacity-control">
+            <input type="range" id="opacityRange" data-action="panel-opacity" min="1" max="100" value="100" aria-label="不透明度" title="不透明度">
+            <span id="opacityLabel">100%</span>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span>清理已完成</span>
+          <button class="link-btn" data-action="clear-done">清除</button>
+        </div>
+        <div class="setting-row">
+          <span>清空全部数据</span>
+          <button class="link-btn" data-action="reset">清空</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <script src="vendor/lucide.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
