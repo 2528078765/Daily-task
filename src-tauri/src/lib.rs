@@ -18,13 +18,16 @@ use windows::Win32::Graphics::Gdi::ScreenToClient;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, GetClientRect, GetCursorPos, GetWindowLongPtrW, SetWindowLongPtrW,
-    GWLP_WNDPROC, HTCLIENT, HTTRANSPARENT, WM_NCHITTEST, WNDPROC,
+    ShowWindow, SW_RESTORE, GWLP_WNDPROC, HTCLIENT, HTTRANSPARENT, WM_NCHITTEST, WM_SIZE,
+    WNDPROC,
 };
 
 #[cfg(target_os = "windows")]
 static ORIGINAL_WNDPROC: Mutex<Option<isize>> = Mutex::new(None);
 #[cfg(target_os = "windows")]
 static LOCKED_HIT_TEST: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static CURRENT_WINDOW_STATE: Mutex<Option<(u32, u32, i32, i32, bool)>> = Mutex::new(None);
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn locked_wnd_proc(
@@ -33,6 +36,27 @@ unsafe extern "system" fn locked_wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    if msg == WM_SIZE && wparam.0 == 1 {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE,
+        };
+        let _ = ShowWindow(hwnd, SW_RESTORE);
+        if let Ok(guard) = CURRENT_WINDOW_STATE.lock() {
+            if let Some((width, height, x, y, collapsed)) = *guard {
+                let _ = SetWindowPos(
+                    hwnd,
+                    Some(if collapsed { HWND_TOPMOST } else { HWND_NOTOPMOST }),
+                    x,
+                    y,
+                    width as i32,
+                    height as i32,
+                    SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE,
+                );
+            }
+        }
+        return LRESULT(0);
+    }
+
     if msg == WM_NCHITTEST && LOCKED_HIT_TEST.load(Ordering::Relaxed) {
         let mut point = POINT::default();
         if GetCursorPos(&mut point).is_ok() {
@@ -60,6 +84,23 @@ unsafe extern "system" fn locked_wnd_proc(
     }
     let old_proc: WNDPROC = std::mem::transmute(old);
     CallWindowProcW(old_proc, hwnd, msg, wparam, lparam)
+}
+
+#[cfg(target_os = "windows")]
+fn install_wnd_proc(window: &WebviewWindow) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    unsafe {
+        let mut guard = ORIGINAL_WNDPROC.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if guard.is_none() {
+            let old = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
+            if old == 0 {
+                return Err("failed to read original window procedure".to_string());
+            }
+            *guard = Some(old);
+            let _ = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, locked_wnd_proc as *const () as isize);
+        }
+    }
+    Ok(())
 }
 
 fn data_path(app: &AppHandle) -> PathBuf {
@@ -107,6 +148,31 @@ fn place_window(window: &WebviewWindow, width: u32, dock: &str) -> Result<(), St
         .map_err(|error| error.to_string())
 }
 
+#[cfg(target_os = "windows")]
+fn set_window_layer(window: &WebviewWindow, topmost: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE,
+        SWP_NOMOVE, SWP_NOSIZE,
+    };
+
+    unsafe {
+        if let Ok(hwnd) = window.hwnd() {
+            let _ = SetWindowPos(
+                hwnd,
+                Some(if topmost { HWND_TOPMOST } else { HWND_NOTOPMOST }),
+                0,
+                0,
+                0,
+                0,
+                SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_window_layer(_window: &WebviewWindow, _topmost: bool) {}
+
 #[tauri::command]
 fn set_window_width(window: WebviewWindow, width: u32, dock: String) -> Result<(), String> {
     place_window(&window, width, &dock)
@@ -147,7 +213,21 @@ fn apply_window_state(
         .map_err(|error| error.to_string())?;
     window
         .set_size(PhysicalSize::new(width, height))
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+
+    if collapsed {
+        set_window_layer(&window, true);
+    } else {
+        place_behind_apps(&window);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(mut guard) = CURRENT_WINDOW_STATE.lock() {
+            *guard = Some((width, height, x, work.position.y, collapsed));
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -248,26 +328,8 @@ fn toggle_window(app: &AppHandle) {
 #[cfg(target_os = "windows")]
 #[tauri::command]
 fn set_locked(window: WebviewWindow, locked: bool) -> Result<(), String> {
-    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
-    unsafe {
-        let mut guard = ORIGINAL_WNDPROC.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        if locked {
-            if guard.is_none() {
-                let old = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
-                if old == 0 {
-                    return Err("failed to read original window procedure".to_string());
-                }
-                *guard = Some(old);
-                let _ = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, locked_wnd_proc as *const () as isize);
-            }
-            LOCKED_HIT_TEST.store(true, Ordering::Relaxed);
-        } else {
-            LOCKED_HIT_TEST.store(false, Ordering::Relaxed);
-            if let Some(old) = guard.take() {
-                let _ = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, old);
-            }
-        }
-    }
+    let _ = window;
+    LOCKED_HIT_TEST.store(locked, Ordering::Relaxed);
     Ok(())
 }
 
@@ -296,6 +358,7 @@ pub fn run() {
                 let _ = window.set_decorations(false);
                 let _ = window.set_skip_taskbar(true);
                 enable_tool_window(&window);
+                let _ = install_wnd_proc(&window);
                 place_behind_apps(&window);
                 if let Ok(Some(monitor)) = window.current_monitor() {
                     let work = monitor.work_area();
