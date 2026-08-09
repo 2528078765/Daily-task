@@ -58,6 +58,7 @@ const state = {
 };
 
 let dragId = null;
+let pointerDragActive = false;
 let collapseTimer = null;
 let toastTimer = null;
 let dropTarget = null;
@@ -545,7 +546,7 @@ function rowHtml(task) {
     : "";
 
   return `
-    <div class="task-row ${task.done ? "done" : ""} ${editing ? "editing" : ""}" draggable="true" data-id="${task.id}" data-period="${task.period}">
+    <div class="task-row ${task.done ? "done" : ""} ${editing ? "editing" : ""}" data-id="${task.id}" data-period="${task.period}">
       <button class="check" data-action="toggle" aria-label="完成任务" aria-pressed="${task.done}" title="${task.done ? "标记未完成" : "标记完成"}">
         <i data-lucide="check" class="icon-13"></i>
       </button>
@@ -1228,47 +1229,52 @@ function showDropIndicator(list, index) {
   else list.appendChild(indicator);
 }
 
-document.addEventListener("dragstart", (event) => {
+document.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 || state.settings.locked || state.settings.view !== "today") return;
   const row = event.target.closest(".task-row");
-  if (!row || row.classList.contains("editing") || state.settings.view !== "today") {
-    event.preventDefault();
-    return;
-  }
+  if (!row || row.classList.contains("editing")) return;
+  const button = event.target.closest("button");
+  if (button && !button.classList.contains("grip")) return;
+  pointerDragActive = true;
   dragId = row.dataset.id;
-  event.dataTransfer.setData("text/plain", dragId);
-  event.dataTransfer.effectAllowed = "move";
-  requestAnimationFrame(() => row.classList.add("dragging"));
+  dropTarget = null;
+  row.classList.add("dragging");
+  event.preventDefault();
 });
 
-document.addEventListener("dragover", (event) => {
-  if (!dragId) return;
-  const list = event.target.closest(".task-list");
-  if (!list || !isDroppablePeriod(list.dataset.period)) return;
+document.addEventListener("pointermove", (event) => {
+  if (!pointerDragActive || !dragId) return;
   event.preventDefault();
-  event.dataTransfer.dropEffect = "move";
-  clearDropIndicators();
+  const lists = $$(".task-list").filter((list) => {
+    const rect = list.getBoundingClientRect();
+    return event.clientY >= rect.top && event.clientY <= rect.bottom;
+  });
+  const list = lists[0];
+  if (!list || !isDroppablePeriod(list.dataset.period)) {
+    clearDropIndicators();
+    dropTarget = null;
+    return;
+  }
   const index = getDropIndex(list, event.clientY);
   dropTarget = { period: list.dataset.period, index };
+  clearDropIndicators();
   showDropIndicator(list, index);
 });
 
-document.addEventListener("drop", (event) => {
-  event.preventDefault();
-  if (dragId && dropTarget) {
+function finishPointerDrag(event) {
+  if (!pointerDragActive) return;
+  if (event && event.type === "pointerup" && dragId && dropTarget) {
     moveToIndex(dragId, dropTarget.period, dropTarget.index);
   }
+  pointerDragActive = false;
   dragId = null;
   dropTarget = null;
   clearDropIndicators();
   $$(".task-row.dragging").forEach((element) => element.classList.remove("dragging"));
-});
+}
 
-document.addEventListener("dragend", () => {
-  dragId = null;
-  dropTarget = null;
-  clearDropIndicators();
-  $$(".task-row.dragging").forEach((element) => element.classList.remove("dragging"));
-});
+document.addEventListener("pointerup", finishPointerDrag);
+document.addEventListener("pointercancel", finishPointerDrag);
 
 const app = $("#app");
 app.addEventListener("mouseenter", () => {
