@@ -517,6 +517,20 @@ button {
   transform: scale(0.98);
 }
 
+.task-row.future {
+  opacity: 0.55;
+  filter: grayscale(0.45);
+}
+
+.task-row.future .check {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.task-row.future .check:hover {
+  background: transparent;
+}
+
 .task-row.drop-target {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
@@ -824,6 +838,28 @@ button {
 
 .time-popover[hidden] {
   display: none;
+}
+
+.time-date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.time-date-row input[type="date"] {
+  width: 132px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+  outline: none;
 }
 
 .time-columns {

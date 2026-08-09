@@ -50,6 +50,7 @@ const state = {
   addPeriod: "all-day",
   addPriority: 1,
   addTime: "",
+  addDate: todayKey(),
   timePicker: { hour: 12, minute: 0 },
   activeTemplateId: null,
   expandedTemplates: new Set(),
@@ -83,6 +84,19 @@ function dateLabelFromKey(key) {
   const parts = key.split("-").map(Number);
   const date = new Date(parts[0], parts[1] - 1, parts[2]);
   return `${date.getMonth() + 1}月${date.getDate()}日 ${WEEK[date.getDay()]}`;
+}
+
+function taskDate(task) {
+  return task.date || todayKey(new Date(task.createdAt));
+}
+
+function isFutureTask(task) {
+  return taskDate(task) > todayKey();
+}
+
+function shortDateLabel(key) {
+  const parts = key.split("-").map(Number);
+  return `${parts[1]}月${parts[2]}日`;
 }
 
 function escapeHtml(value) {
@@ -136,14 +150,20 @@ async function load() {
   if (data) {
     state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
     state.seeded = data.seeded === true;
+    state.tasks.forEach((task) => {
+      if (!task.date) task.date = todayKey(new Date(task.createdAt));
+    });
     if (Array.isArray(data.history)) {
       state.history = data.history;
     } else {
       const key = todayKey();
-      state.history = state.tasks.filter((task) => todayKey(new Date(task.createdAt)) !== key);
-      state.tasks = state.tasks.filter((task) => todayKey(new Date(task.createdAt)) === key);
+      state.history = state.tasks.filter((task) => taskDate(task) !== key);
+      state.tasks = state.tasks.filter((task) => taskDate(task) === key);
       save();
     }
+    state.history.forEach((task) => {
+      if (!task.date) task.date = todayKey(new Date(task.createdAt));
+    });
     state.templates = Array.isArray(data.templates) ? data.templates : [];
     state.templatesSeeded = data.templatesSeeded === true;
     const legacyTemplates = state.templates.filter(
@@ -185,6 +205,8 @@ async function load() {
     save();
   }
 
+  if (archivePastTasks()) save();
+
   if (!state.activeTemplateId && state.templates.length) {
     state.activeTemplateId = state.templates[0].id;
   }
@@ -207,6 +229,18 @@ async function load() {
 
 function nextSort() {
   return Math.max(0, ...state.tasks.map((task) => task.sort)) + 10;
+}
+
+function archivePastTasks() {
+  const key = todayKey();
+  const past = state.tasks.filter((task) => taskDate(task) < key);
+  if (!past.length) return false;
+  past.forEach((task) => {
+    if (!task.date) task.date = taskDate(task);
+  });
+  state.history.push(...past);
+  state.tasks = state.tasks.filter((task) => taskDate(task) >= key);
+  return true;
 }
 
 function parseInput(raw, explicitTime = "") {
@@ -257,6 +291,7 @@ function addTask() {
     period: parsed.period,
     priority: parsed.priority,
     done: false,
+    date: state.addDate,
     createdAt: new Date().toISOString(),
     sort: nextSort()
   };
@@ -264,6 +299,7 @@ function addTask() {
   state.tasks.push(task);
   state.addPeriod = "all-day";
   state.addTime = "";
+  state.addDate = todayKey();
   input.value = "";
   save();
   render();
@@ -311,7 +347,7 @@ function addTemplate() {
 
 function toggleTask(id) {
   const task = findTask(id);
-  if (!task) return;
+  if (!task || isFutureTask(task)) return;
   task.done = !task.done;
   save();
   render();
@@ -354,7 +390,7 @@ function addTemplateTaskToToday(task) {
   const key = todayKey();
   const todayTitles = new Set(
     state.tasks
-      .filter((item) => todayKey(new Date(item.createdAt)) === key)
+      .filter((item) => taskDate(item) === key)
       .map((item) => normalizedTitle(item.title))
   );
   if (todayTitles.has(normalizedTitle(task.title))) return false;
@@ -365,6 +401,7 @@ function addTemplateTaskToToday(task) {
     period: task.period,
     priority: task.priority,
     done: false,
+    date: todayKey(),
     createdAt: new Date().toISOString(),
     sort: nextSort()
   });
@@ -409,7 +446,7 @@ function updateTemplateFromToday(templateId) {
   if (!template) return;
   const key = todayKey();
   const todayTasks = state.tasks
-    .filter((task) => todayKey(new Date(task.createdAt)) === key)
+    .filter((task) => taskDate(task) === key)
     .map((task) => ({
       id: uid(),
       title: task.title,
@@ -426,7 +463,7 @@ function updateTemplateFromToday(templateId) {
 
 function createTemplateFromToday() {
   const key = todayKey();
-  const todayTasks = state.tasks.filter((task) => todayKey(new Date(task.createdAt)) === key);
+  const todayTasks = state.tasks.filter((task) => taskDate(task) === key);
   if (!todayTasks.length) {
     toast("今天还没有任务");
     return;
@@ -535,19 +572,23 @@ function byOrder(a, b) {
 
 function rowHtml(task) {
   const editing = state.editingId === task.id;
+  const future = isFutureTask(task);
   const title = editing
     ? `<input class="edit-input" value="${escapeHtml(task.title)}" maxlength="120" data-edit-id="${task.id}">`
     : `<span class="task-title">${escapeHtml(task.title)}</span>`;
-  const time = task.time
-    ? `<span class="task-time"><i data-lucide="clock" class="icon-12"></i>${task.time}</span>`
+  const timeText = task.time
+    ? (future ? `${shortDateLabel(taskDate(task))} ${task.time}` : task.time)
+    : (future ? shortDateLabel(taskDate(task)) : "");
+  const time = timeText
+    ? `<span class="task-time"><i data-lucide="clock" class="icon-12"></i>${timeText}</span>`
     : "";
   const date = state.settings.view === "history"
     ? `<span class="task-date">${dateLabelFromKey(todayKey(new Date(task.createdAt)))}</span>`
     : "";
 
   return `
-    <div class="task-row ${task.done ? "done" : ""} ${editing ? "editing" : ""}" data-id="${task.id}" data-period="${task.period}">
-      <button class="check" data-action="toggle" aria-label="完成任务" aria-pressed="${task.done}" title="${task.done ? "标记未完成" : "标记完成"}">
+    <div class="task-row ${task.done ? "done" : ""} ${future ? "future" : ""} ${editing ? "editing" : ""}" data-id="${task.id}" data-period="${task.period}">
+      <button class="check" data-action="toggle" ${future ? "disabled" : ""} aria-label="完成任务" aria-pressed="${task.done}" title="${future ? "未来待办暂不能完成" : (task.done ? "标记未完成" : "标记完成")}">
         <i data-lucide="check" class="icon-13"></i>
       </button>
       <span class="priority" data-level="${task.priority}" title="优先级 ${PRIORITY_LABEL[task.priority]}"><i></i><b>${PRIORITY_LABEL[task.priority]}</b></span>
@@ -578,7 +619,7 @@ function emptyHtml(type) {
 
 function renderToday() {
   const key = todayKey();
-  const todayTasks = state.tasks.filter((task) => todayKey(new Date(task.createdAt)) === key);
+  const todayTasks = state.tasks.filter((task) => taskDate(task) >= key);
   const wrap = $("#taskLists");
   wrap.innerHTML = "";
 
@@ -644,7 +685,7 @@ function toggleHistoryDate(dateKey) {
 }
 
 function renderHistory() {
-  const pastTasks = [...state.history].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const pastTasks = [...state.history].sort((a, b) => taskDate(b).localeCompare(taskDate(a)));
   const wrap = $("#taskLists");
   wrap.innerHTML = "";
 
@@ -655,7 +696,7 @@ function renderHistory() {
 
   const groups = new Map();
   pastTasks.forEach((task) => {
-    const groupKey = todayKey(new Date(task.createdAt));
+    const groupKey = taskDate(task);
     if (!groups.has(groupKey)) groups.set(groupKey, []);
     groups.get(groupKey).push(task);
   });
@@ -737,7 +778,7 @@ function renderDate() {
 
 function renderProgress() {
   const key = todayKey();
-  const todayTasks = state.tasks.filter((task) => todayKey(new Date(task.createdAt)) === key);
+  const todayTasks = state.tasks.filter((task) => taskDate(task) === key);
   const done = todayTasks.filter((task) => task.done).length;
   const total = todayTasks.length;
   const percent = total ? Math.round((done / total) * 100) : 0;
@@ -837,11 +878,13 @@ function confirmTimePicker() {
   const { hour, minute } = state.timePicker;
   state.addTime = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
   $("#timePopover").hidden = true;
-  $("#timeText").textContent = state.addTime;
+  const dateLabel = state.addDate === todayKey() ? "" : `${shortDateLabel(state.addDate)} `;
+  $("#timeText").textContent = `${dateLabel}${state.addTime}`;
 }
 
 function clearTimePicker() {
   state.addTime = "";
+  state.addDate = todayKey();
   $("#timePopover").hidden = true;
   $("#timeText").textContent = "时间";
 }
@@ -884,7 +927,12 @@ function renderChrome() {
     : '<i data-lucide="lock"></i>';
   $("#lockBtn").title = state.settings.locked ? "解锁" : "锁定";
   $("#lockBtn").setAttribute("aria-label", state.settings.locked ? "解锁" : "锁定");
-  $("#timeText").textContent = state.addTime || "时间";
+  const dateInput = $("#taskDateInput");
+  if (dateInput) dateInput.value = state.addDate;
+  const dateLabel = state.addDate === todayKey() ? "" : `${shortDateLabel(state.addDate)} `;
+  $("#timeText").textContent = state.addTime
+    ? `${dateLabel}${state.addTime}`
+    : (dateLabel ? `${dateLabel}全天` : "时间");
   $("#timePopover").hidden = true;
   applyPanelStyle();
 }
@@ -1181,6 +1229,14 @@ $("#opacityRange").addEventListener("input", (event) => {
   applyPanelStyle();
 });
 
+$("#taskDateInput").addEventListener("change", (event) => {
+  state.addDate = event.target.value || todayKey();
+  const dateLabel = state.addDate === todayKey() ? "" : `${shortDateLabel(state.addDate)} `;
+  $("#timeText").textContent = state.addTime
+    ? `${dateLabel}${state.addTime}`
+    : (dateLabel ? `${dateLabel}全天` : "时间");
+});
+
 $("#hourColumn").addEventListener("click", (event) => {
   const item = event.target.closest(".time-item");
   if (!item) return;
@@ -1298,7 +1354,7 @@ function checkTaskReminders() {
   const due = state.tasks.find(
     (task) => !task.done
       && task.time === currentTime
-      && todayKey(new Date(task.createdAt)) === key
+      && taskDate(task) === key
   );
   if (!due) return;
   const notifyKey = `${key}-${due.id}-${currentTime}`;
@@ -1312,6 +1368,12 @@ if (isTauriApp) {
   document.body.classList.add("tauri");
   checkTaskReminders();
   setInterval(checkTaskReminders, 30000);
+  setInterval(() => {
+    if (archivePastTasks()) {
+      save();
+      render();
+    }
+  }, 60000);
 }
 
 buildTimeColumns();
