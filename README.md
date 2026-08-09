@@ -23,7 +23,7 @@
 
 ### 方式一：直接安装
 
-从 [Releases](https://github.com/2528078765/Daily-task/releases/latest) 下载 `每日任务侧边栏-安装包.exe`，双击安装后即可使用。
+从 [Releases](https://github.com/2528078765/Daily-task/releases/latest) 下载 `daily-task-sidebar-0.1.0-setup.exe`，双击安装后即可使用。
 
 安装后首次启动没有任何示例任务，任务、历史、模板都是空的，需要自己添加。
 
