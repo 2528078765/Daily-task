@@ -19,6 +19,14 @@
 - 纯色背景和不透明度 1%-100% 调节
 - 数据使用 JSON 存储，自动备份
 
+## 界面预览
+
+![不透明度设置](preview-opacity.png)
+
+![任务模板](preview-templates.png)
+
+![时间选择](preview-timepicker.png)
+
 ## 下载使用
 
 ### 方式一：直接安装
