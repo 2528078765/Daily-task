@@ -4,4 +4,4 @@ src-tauri/target-ta/
 src-tauri/gen/schemas/
 logs/
 *.exe
-每日任务侧边栏-安装包.exe
+!每日任务侧边栏-安装包.exe
