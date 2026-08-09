@@ -2,6 +2,11 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 const isTauriApp = typeof window !== "undefined" && typeof window.__TAURI_INTERNALS__ !== "undefined";
 
+if (!isTauriApp) {
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#f2f4f5;background:#17191b;font-family:sans-serif;">请使用桌面版启动</div>';
+  throw new Error("Desktop only");
+}
+
 function invokeTauri(command, args) {
   const api = window.__TAURI__ && window.__TAURI__.core;
   if (api && typeof api.invoke === "function") {
@@ -13,7 +18,6 @@ function invokeTauri(command, args) {
   return Promise.reject(new Error("Tauri runtime unavailable"));
 }
 
-const STORAGE_KEY = "daily-task-sidebar.v1";
 const PERIODS = [
   { id: "all-day", label: "全天" },
   { id: "morning", label: "上午" },
@@ -115,24 +119,15 @@ function save() {
     settings: state.settings
   };
   const json = JSON.stringify(payload);
-  if (isTauriApp) {
-    invokeTauri("save_data", { contents: json })
-      .catch((error) => console.error("保存数据失败", error));
-  } else {
-    localStorage.setItem(STORAGE_KEY, json);
-  }
+  invokeTauri("save_data", { contents: json })
+    .catch((error) => console.error("保存数据失败", error));
 }
 
 async function load() {
   let data = null;
   try {
-    if (isTauriApp) {
-      const contents = await invokeTauri("load_data");
-      if (contents) data = JSON.parse(contents);
-    } else {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) data = JSON.parse(raw);
-    }
+    const contents = await invokeTauri("load_data");
+    if (contents) data = JSON.parse(contents);
   } catch (error) {
     console.warn("读取本地数据失败", error);
   }

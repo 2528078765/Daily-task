@@ -35,11 +35,7 @@
 
 每次保存前会自动备份为同目录下的 `data.backup.json`。
 
-### 方式二：Web 原型
-
-直接打开项目根目录的 `index.html` 即可在浏览器里使用，数据会保存在浏览器 `localStorage` 中。
-
-### 方式三：从源码运行桌面版
+### 方式二：从源码运行桌面版
 
 环境要求：
 
@@ -89,7 +85,7 @@ npm run tauri build
 ## 项目结构
 
 ```text
-index.html           Web 原型页面
+index.html           桌面版前端页面
 styles.css           样式
 app.js               前端逻辑
 dist/                桌面版使用的前端资源

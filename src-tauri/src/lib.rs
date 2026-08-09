@@ -18,8 +18,9 @@ use windows::Win32::Graphics::Gdi::ScreenToClient;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, GetClientRect, GetCursorPos, GetWindowLongPtrW, SetWindowLongPtrW,
-    ShowWindow, SW_RESTORE, GWLP_WNDPROC, HTCLIENT, HTTRANSPARENT, WM_NCHITTEST, WM_SIZE,
-    WNDPROC,
+    GetAncestor, IsWindowVisible, ShowWindow, WindowFromPoint, SW_RESTORE, SW_SHOW, WINDOWPOS,
+    GA_ROOT, GWLP_WNDPROC, HTCLIENT, HTTRANSPARENT, SWP_HIDEWINDOW, WM_NCHITTEST, WM_SHOWWINDOW,
+    WM_SIZE, WM_WINDOWPOSCHANGING, WNDPROC,
 };
 
 #[cfg(target_os = "windows")]
@@ -28,6 +29,14 @@ static ORIGINAL_WNDPROC: Mutex<Option<isize>> = Mutex::new(None);
 static LOCKED_HIT_TEST: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "windows")]
 static CURRENT_WINDOW_STATE: Mutex<Option<(u32, u32, i32, i32, bool)>> = Mutex::new(None);
+#[cfg(target_os = "windows")]
+static ALLOW_HIDE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static USER_HIDDEN: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static MANUAL_SHOW_UNTIL: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+#[cfg(target_os = "windows")]
+static SYSTEM_HIDE_ATTEMPTED: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn locked_wnd_proc(
@@ -36,16 +45,38 @@ unsafe extern "system" fn locked_wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    if msg == WM_SHOWWINDOW && wparam.0 == 0 {
+        if !ALLOW_HIDE.swap(false, Ordering::Relaxed) {
+            if IsWindowVisible(hwnd).as_bool() {
+                SYSTEM_HIDE_ATTEMPTED.store(true, Ordering::Relaxed);
+                let _ = ShowWindow(hwnd, SW_SHOW);
+                return LRESULT(0);
+            }
+        }
+    }
+
+    if msg == WM_WINDOWPOSCHANGING {
+        let pos = lparam.0 as *mut WINDOWPOS;
+        if !pos.is_null() && ((*pos).flags.0 & SWP_HIDEWINDOW.0) != 0 {
+            if !ALLOW_HIDE.swap(false, Ordering::Relaxed) && IsWindowVisible(hwnd).as_bool() {
+                SYSTEM_HIDE_ATTEMPTED.store(true, Ordering::Relaxed);
+                (*pos).flags.0 &= !SWP_HIDEWINDOW.0;
+                return LRESULT(0);
+            }
+        }
+    }
+
     if msg == WM_SIZE && wparam.0 == 1 {
+        SYSTEM_HIDE_ATTEMPTED.store(true, Ordering::Relaxed);
         use windows::Win32::UI::WindowsAndMessaging::{
-            SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE,
+            SetWindowPos, HWND_NOTOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE,
         };
         let _ = ShowWindow(hwnd, SW_RESTORE);
         if let Ok(guard) = CURRENT_WINDOW_STATE.lock() {
-            if let Some((width, height, x, y, collapsed)) = *guard {
+            if let Some((width, height, x, y, _collapsed)) = *guard {
                 let _ = SetWindowPos(
                     hwnd,
-                    Some(if collapsed { HWND_TOPMOST } else { HWND_NOTOPMOST }),
+                    Some(HWND_NOTOPMOST),
                     x,
                     y,
                     width as i32,
@@ -314,12 +345,54 @@ fn place_behind_apps(window: &WebviewWindow) {
 #[cfg(not(target_os = "windows"))]
 fn place_behind_apps(_window: &WebviewWindow) {}
 
+#[cfg(target_os = "windows")]
+fn window_visually_visible(window: &WebviewWindow) -> bool {
+    unsafe {
+        if let (Ok(hwnd), Ok(position), Ok(size)) = (
+            window.hwnd(),
+            window.outer_position(),
+            window.outer_size(),
+        ) {
+            let point = POINT {
+                x: position.x + size.width as i32 / 2,
+                y: position.y + size.height as i32 / 2,
+            };
+            let hit = WindowFromPoint(point);
+            if hit == HWND::default() {
+                return false;
+            }
+            return GetAncestor(hit, GA_ROOT) == hwnd;
+        }
+    }
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
+fn window_visually_visible(window: &WebviewWindow) -> bool {
+    window.is_visible().unwrap_or(false)
+}
+
 fn toggle_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        if window.is_visible().unwrap_or(true) {
+        if SYSTEM_HIDE_ATTEMPTED.swap(false, Ordering::Relaxed) {
+            USER_HIDDEN.store(false, Ordering::Relaxed);
+            let _ = window.show();
+            set_window_layer(&window, true);
+            if let Ok(mut guard) = MANUAL_SHOW_UNTIL.lock() {
+                *guard = Some(std::time::Instant::now() + std::time::Duration::from_secs(3));
+            }
+            let _ = window.set_focus();
+        } else if window_visually_visible(&window) {
+            ALLOW_HIDE.store(true, Ordering::Relaxed);
+            USER_HIDDEN.store(true, Ordering::Relaxed);
             let _ = window.hide();
         } else {
+            USER_HIDDEN.store(false, Ordering::Relaxed);
             let _ = window.show();
+            set_window_layer(&window, true);
+            if let Ok(mut guard) = MANUAL_SHOW_UNTIL.lock() {
+                *guard = Some(std::time::Instant::now() + std::time::Duration::from_secs(3));
+            }
             let _ = window.set_focus();
         }
     }
@@ -360,6 +433,31 @@ pub fn run() {
                 enable_tool_window(&window);
                 let _ = install_wnd_proc(&window);
                 place_behind_apps(&window);
+                let monitor_window = window.clone();
+                #[cfg(target_os = "windows")]
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                    if !USER_HIDDEN.load(Ordering::Relaxed)
+                        && !monitor_window.is_visible().unwrap_or(true)
+                    {
+                        let _ = monitor_window.show();
+                    }
+                    let manual = MANUAL_SHOW_UNTIL
+                        .lock()
+                        .map(|state| state.map(|value| value > std::time::Instant::now()).unwrap_or(false))
+                        .unwrap_or(false);
+                    if !manual {
+                        let collapsed = CURRENT_WINDOW_STATE
+                            .lock()
+                            .map(|state| state.map(|(_, _, _, _, value)| value).unwrap_or(false))
+                            .unwrap_or(false);
+                        if collapsed {
+                            set_window_layer(&monitor_window, true);
+                        } else {
+                            place_behind_apps(&monitor_window);
+                        }
+                    }
+                });
                 if let Ok(Some(monitor)) = window.current_monitor() {
                     let work = monitor.work_area();
                     let width = 320u32;
