@@ -869,8 +869,6 @@ function renderChrome() {
     $("#taskInput").placeholder = "添加今天的任务";
   }
   $("#addBtn").title = isTemplateView ? "添加到模板" : "添加任务";
-  $("#applyTemplateBtn").style.display = isTemplateView ? "none" : "";
-
   const autoToggle = $('[data-role="auto-toggle"]');
   autoToggle.classList.toggle("on", state.settings.autoCollapse);
   const autostartToggle = $('[data-role="autostart-toggle"]');
