@@ -10,11 +10,6 @@
   <div class="desktop-bg" aria-hidden="true"></div>
 
   <aside id="app" class="sidebar" data-dock="full">
-    <div class="strip" data-action="expand" role="button" aria-label="展开侧边栏" title="展开侧边栏">
-      <div class="strip-handle" aria-hidden="true"></div>
-      <div class="strip-progress" data-role="strip-progress" title="今日完成度"></div>
-    </div>
-
     <div class="panel">
       <header class="panel-header">
         <div class="date-block">
@@ -27,9 +22,6 @@
           </button>
           <button class="icon-btn" id="settingsBtn" data-action="settings" aria-label="设置" title="设置">
             <i data-lucide="settings-2"></i>
-          </button>
-          <button class="icon-btn" data-action="collapse" aria-label="收起侧边栏" title="收起侧边栏">
-            <i data-lucide="panel-right-close"></i>
           </button>
         </div>
       </header>
@@ -116,24 +108,6 @@
             <i data-lucide="sun"></i>
           </button>
         </div>
-        <div class="setting-row">
-          <span>停靠位置</span>
-          <div class="seg" data-role="dock-seg">
-            <button class="seg-btn" data-action="dock" data-dock="top">上缘</button>
-            <button class="seg-btn active" data-action="dock" data-dock="full">拉满</button>
-          </div>
-        </div>
-        <div class="setting-row">
-          <span>收起方向</span>
-          <div class="seg" data-role="collapse-seg">
-            <button class="seg-btn" data-action="collapse-direction" data-direction="right">往右收</button>
-            <button class="seg-btn" data-action="collapse-direction" data-direction="top">往上收</button>
-          </div>
-        </div>
-        <div class="setting-row">
-          <span>鼠标离开自动收起</span>
-          <button class="toggle" data-action="auto-collapse" data-role="auto-toggle" aria-label="自动收起" title="自动收起"></button>
-        </div>
         <div class="setting-row" id="autostartRow">
           <span>开机自启</span>
           <button class="toggle" data-action="toggle-autostart" data-role="autostart-toggle" aria-label="开机自启" title="开机自启"></button>
@@ -151,14 +125,6 @@
             <input type="range" id="opacityRange" data-action="panel-opacity" min="1" max="100" value="100" aria-label="不透明度" title="不透明度">
             <span id="opacityLabel">100%</span>
           </div>
-        </div>
-        <div class="setting-row">
-          <span>清理已完成</span>
-          <button class="link-btn" data-action="clear-done">清除</button>
-        </div>
-        <div class="setting-row">
-          <span>清空全部数据</span>
-          <button class="link-btn" data-action="reset">清空</button>
         </div>
       </div>
     </div>

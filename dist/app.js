@@ -36,7 +36,6 @@ const state = {
   settings: {
     theme: "dark",
     dock: "full",
-    autoCollapse: true,
     view: "today",
     panelColor: null,
     panelOpacity: 100,
@@ -44,7 +43,6 @@ const state = {
     autostart: false,
     collapseDirection: "right"
   },
-  collapsed: false,
   settingsOpen: false,
   editingId: null,
   addPeriod: "all-day",
@@ -60,11 +58,9 @@ const state = {
 
 let dragId = null;
 let pointerDragActive = false;
-let collapseTimer = null;
 let toastTimer = null;
 let dropTarget = null;
 let templateToggleTimer = null;
-let expandedGraceUntil = 0;
 
 function uid() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -185,8 +181,11 @@ async function load() {
       save();
     }
     state.settings = Object.assign({}, state.settings, data.settings || {});
+    state.settings.dock = "full";
+    if (state.settings.locked) {
+      state.settings.view = "today";
+    }
     if (data.settings && !data.settings.edgeMode) {
-      state.settings.autoCollapse = true;
       state.settings.edgeMode = true;
       save();
     }
@@ -222,7 +221,10 @@ async function load() {
   render();
   if (isTauriApp) {
     await invokeTauri("set_locked", { locked: state.settings.locked })
-      .catch((error) => console.warn("设置锁定状态失败", error));
+      .catch((error) => {
+        toast(`锁定状态失败：${error}`);
+        console.warn("设置锁定状态失败", error);
+      });
     await applyDesktopWindow();
   }
 }
@@ -891,19 +893,21 @@ function clearTimePicker() {
 
 function renderChrome() {
   const app = $("#app");
+  if (state.settings.locked && state.settings.view !== "today") {
+    state.settings.view = "today";
+    save();
+  }
   app.dataset.dock = state.settings.dock;
-  app.dataset.collapseDirection = state.settings.collapseDirection;
-  app.classList.toggle("collapsed", state.collapsed);
   app.classList.toggle("locked", state.settings.locked);
   document.documentElement.dataset.theme = state.settings.theme;
 
   $$(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === state.settings.view));
   $$(".chip").forEach((chip) => chip.classList.toggle("active", chip.dataset.period === state.addPeriod));
   $$(".prio-chip").forEach((chip) => chip.classList.toggle("active", Number(chip.dataset.priority) === state.addPriority));
-  $$(".seg-btn[data-action='dock']").forEach((btn) => btn.classList.toggle("active", btn.dataset.dock === state.settings.dock));
-  $$(".seg-btn[data-action='collapse-direction']").forEach((btn) => btn.classList.toggle("active", btn.dataset.direction === state.settings.collapseDirection));
 
   const isTemplateView = state.settings.view === "templates";
+  const addArea = $(".add-area");
+  if (addArea) addArea.style.display = state.settings.locked ? "none" : "";
   $("h1").textContent = isTemplateView ? "任务模板" : "今日任务";
   $(".progress-section").style.display = isTemplateView ? "none" : "";
   if (isTemplateView) {
@@ -913,8 +917,6 @@ function renderChrome() {
     $("#taskInput").placeholder = "添加今天的任务";
   }
   $("#addBtn").title = isTemplateView ? "添加到模板" : "添加任务";
-  const autoToggle = $('[data-role="auto-toggle"]');
-  autoToggle.classList.toggle("on", state.settings.autoCollapse);
   const autostartToggle = $('[data-role="autostart-toggle"]');
   autostartToggle.classList.toggle("on", state.settings.autostart);
   $("#autostartRow").style.display = isTauriApp ? "" : "none";
@@ -945,28 +947,12 @@ function render() {
   if (window.lucide) window.lucide.createIcons();
 }
 
-function setCollapsed(collapsed) {
-  state.collapsed = collapsed;
-  $("#app").classList.toggle("collapsed", collapsed);
-  if (!collapsed) {
-    expandedGraceUntil = Date.now() + 600;
-  }
-  if (isTauriApp) {
-    invokeTauri("apply_window_state", {
-      collapsed,
-      dock: state.settings.dock,
-      direction: state.settings.collapseDirection
-    })
-      .catch((error) => console.warn("调整窗口宽度失败", error));
-  }
-}
-
 async function applyDesktopWindow() {
   if (!isTauriApp) return;
   try {
     await invokeTauri("apply_window_state", {
-      collapsed: state.collapsed,
-      dock: state.settings.dock,
+      collapsed: false,
+      dock: "full",
       direction: state.settings.collapseDirection
     });
   } catch (error) {
@@ -981,34 +967,27 @@ function toggleTheme() {
 }
 
 function toggleLock() {
-  state.settings.locked = !state.settings.locked;
-  if (state.settings.locked && document.activeElement && typeof document.activeElement.blur === "function") {
-    document.activeElement.blur();
+  const next = !state.settings.locked;
+  state.settings.locked = next;
+  if (next) {
+    state.settingsOpen = false;
+    state.settings.view = "today";
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      document.activeElement.blur();
+    }
   }
   save();
   render();
   if (isTauriApp) {
-    invokeTauri("set_locked", { locked: state.settings.locked })
-      .catch((error) => console.warn("设置锁定状态失败", error));
+    invokeTauri("set_locked", { locked: next })
+      .catch((error) => {
+        state.settings.locked = !next;
+        save();
+        render();
+        toast(`锁定失败：${error}`);
+        console.warn("设置锁定状态失败", error);
+      });
   }
-}
-
-function clearDone() {
-  state.tasks = state.tasks.filter((task) => !task.done);
-  save();
-  render();
-}
-
-function resetSample() {
-  state.tasks = [];
-  state.history = [];
-  state.seeded = true;
-  state.templates = [];
-  state.templatesSeeded = true;
-  state.activeTemplateId = null;
-  state.expandedTemplates.clear();
-  save();
-  render();
 }
 
 function commitEdit(id, value) {
@@ -1023,11 +1002,9 @@ function commitEdit(id, value) {
 }
 
 document.addEventListener("click", (event) => {
+  if (state.settings.locked) return;
   const clickedActionElement = event.target.closest("[data-action]");
   const clickedAction = clickedActionElement ? clickedActionElement.dataset.action : null;
-  if (state.settings.locked && clickedAction !== "lock" && clickedAction !== "expand") {
-    return;
-  }
   if (event.target.closest(".template-rename-input")) {
     return;
   }
@@ -1061,26 +1038,11 @@ document.addEventListener("click", (event) => {
   if (action === "toggle" && id) toggleTask(id);
   if (action === "delete" && id) deleteTask(id);
   if (action === "drag") return;
-  if (action === "collapse") setCollapsed(true);
-  if (action === "expand") setCollapsed(false);
   if (action === "lock") toggleLock();
   if (action === "toggle-time-picker") toggleTimePicker();
   if (action === "confirm-time") confirmTimePicker();
   if (action === "clear-time") clearTimePicker();
   if (action === "theme") toggleTheme();
-  if (action === "auto-collapse") {
-    state.settings.autoCollapse = !state.settings.autoCollapse;
-    save();
-    render();
-  }
-  if (action === "collapse-direction") {
-    state.settings.collapseDirection = actionElement.dataset.direction;
-    save();
-    render();
-    if (isTauriApp && state.collapsed) {
-      setCollapsed(true);
-    }
-  }
   if (action === "toggle-autostart") {
     const next = !state.settings.autostart;
     state.settings.autostart = next;
@@ -1100,12 +1062,6 @@ document.addEventListener("click", (event) => {
     state.settings.panelColor = null;
     save();
     render();
-  }
-  if (action === "dock") {
-    state.settings.dock = actionElement.dataset.dock;
-    save();
-    render();
-    if (isTauriApp) applyDesktopWindow();
   }
   if (action === "tab") {
     state.settings.view = actionElement.dataset.view;
@@ -1140,14 +1096,6 @@ document.addEventListener("click", (event) => {
   }
   if (action === "toggle-history-date") toggleHistoryDate(actionElement.dataset.date);
   if (action === "rename-template") startRenameTemplate(actionElement.dataset.templateId);
-  if (action === "clear-done") {
-    state.settingsOpen = false;
-    clearDone();
-  }
-  if (action === "reset") {
-    state.settingsOpen = false;
-    resetSample();
-  }
 });
 
 document.addEventListener("dblclick", (event) => {
@@ -1332,18 +1280,6 @@ function finishPointerDrag(event) {
 document.addEventListener("pointerup", finishPointerDrag);
 document.addEventListener("pointercancel", finishPointerDrag);
 
-const app = $("#app");
-app.addEventListener("mouseenter", () => {
-  clearTimeout(collapseTimer);
-  expandedGraceUntil = 0;
-});
-
-app.addEventListener("mouseleave", () => {
-  if (state.settings.autoCollapse && !state.settingsOpen && Date.now() > expandedGraceUntil) {
-    collapseTimer = setTimeout(() => setCollapsed(true), 100);
-  }
-});
-
 let lastNotifiedKey = "";
 
 function checkTaskReminders() {
@@ -1366,6 +1302,20 @@ function checkTaskReminders() {
 
 if (isTauriApp) {
   document.body.classList.add("tauri");
+  const eventApi = window.__TAURI__ && window.__TAURI__.event;
+  if (eventApi && typeof eventApi.listen === "function") {
+    eventApi.listen("tray-unlock", () => {
+      if (!state.settings.locked) return;
+      invokeTauri("set_locked", { locked: false })
+        .then(() => {
+          state.settings.locked = false;
+          save();
+          render();
+          return applyDesktopWindow();
+        })
+        .catch((error) => console.warn("托盘解锁失败", error));
+    }).catch((error) => console.warn("监听解锁事件失败", error));
+  }
   checkTaskReminders();
   setInterval(checkTaskReminders, 30000);
   setInterval(() => {

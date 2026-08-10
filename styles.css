@@ -102,6 +102,8 @@ button {
   display: flex;
   box-shadow: var(--shadow);
   transition: width 0.18s ease;
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .sidebar.collapsed {
@@ -113,8 +115,7 @@ button {
   right: 0;
   bottom: auto;
   height: min(calc(100vh - 20px), 680px);
-  border-radius: 0 0 0 14px;
-  overflow: hidden;
+  border-radius: 14px;
 }
 
 .panel {
@@ -214,8 +215,8 @@ button {
   pointer-events: none;
 }
 
-.sidebar.locked #lockBtn {
-  pointer-events: auto;
+.sidebar.locked .header-actions {
+  display: none;
 }
 
 .strip-progress {
