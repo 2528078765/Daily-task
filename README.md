@@ -30,7 +30,7 @@
 
 ### 方式一：直接安装
 
-从 [Releases](https://github.com/2528078765/Daily-task/releases/latest) 下载 `todo-desktop-assistant-1.0.1-setup.exe`，双击安装后即可使用。
+从 [Releases](https://github.com/2528078765/Daily-task/releases/latest) 下载 `todo-desktop-assistant-1.0.2-setup.exe`，双击安装后即可使用。
 
 如果电脑没有 WebView2 Runtime，安装时会自动下载并安装，不需要手动处理。
 
