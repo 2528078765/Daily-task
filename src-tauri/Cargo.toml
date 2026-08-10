@@ -1,6 +1,6 @@
 [package]
 name = "daily-task-sidebar"
-version = "1.0.4"
+version = "1.0.5"
 description = "待办桌面助手"
 authors = ["Codex"]
 edition = "2021"

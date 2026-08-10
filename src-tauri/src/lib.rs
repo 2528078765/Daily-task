@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -122,6 +123,70 @@ fn data_path(app: &AppHandle) -> PathBuf {
         .expect("failed to resolve app data dir")
         .join("data.json")
 }
+
+#[cfg(target_os = "windows")]
+fn webview2_installed() -> bool {
+    let candidates = [
+        r"HKCU\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        r"HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        r"HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+    ];
+    candidates.iter().any(|key| {
+        Command::new("reg")
+            .arg("query")
+            .arg(key)
+            .arg("/v")
+            .arg("pv")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn webview2_installed() -> bool {
+    true
+}
+
+#[cfg(target_os = "windows")]
+fn ensure_webview2(app: &AppHandle) {
+    if webview2_installed() {
+        return;
+    }
+
+    let mut candidates = Vec::new();
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("MicrosoftEdgeWebview2Setup.exe"));
+        candidates.push(resource_dir.join("resources").join("MicrosoftEdgeWebview2Setup.exe"));
+    }
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(dir) = exe_path.parent() {
+            candidates.push(dir.join("MicrosoftEdgeWebview2Setup.exe"));
+            candidates.push(dir.join("resources").join("MicrosoftEdgeWebview2Setup.exe"));
+        }
+    }
+
+    let Some(bootstrapper) = candidates.into_iter().find(|path| path.exists()) else {
+        return;
+    };
+
+    let attempts: [&[&str]; 2] = [&["/silent", "/install"], &["/install"]];
+    for args in attempts {
+        if let Ok(status) = Command::new(&bootstrapper).args(args).status() {
+            if status.success() && webview2_installed() {
+                return;
+            }
+        }
+        if webview2_installed() {
+            return;
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ensure_webview2(_app: &AppHandle) {}
 
 #[tauri::command]
 fn load_data(app: AppHandle) -> String {
@@ -953,6 +1018,14 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            ensure_webview2(app.handle());
+
+            let window_config = app.config().app.windows.first().cloned();
+            if let Some(window_config) = window_config {
+                tauri::WebviewWindowBuilder::from_config(app, &window_config)?
+                    .build()?;
+            }
+
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_decorations(false);
                 let _ = window.set_skip_taskbar(true);

@@ -4,3 +4,4 @@ src-tauri/target-ta/
 src-tauri/gen/schemas/
 logs/
 *.exe
+!src-tauri/resources/MicrosoftEdgeWebview2Setup.exe
