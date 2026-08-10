@@ -996,7 +996,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&unlock_item, &quit_item])?;
 
             let mut tray_builder = TrayIconBuilder::with_id("main")
-                .tooltip("每日任务侧边栏")
+                .tooltip("待办桌面助手")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
