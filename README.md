@@ -32,6 +32,8 @@
 
 从 [Releases](https://github.com/2528078765/Daily-task/releases/latest) 下载 `todo-desktop-assistant-1.0.0-setup.exe`，双击安装后即可使用。
 
+如果电脑没有 WebView2 Runtime，安装时会自动下载并安装，不需要手动处理。
+
 安装后首次启动没有任何示例任务，任务、历史、模板都是空的，需要自己添加。
 
 数据保存在：

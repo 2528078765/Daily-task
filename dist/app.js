@@ -629,6 +629,7 @@ function renderToday() {
   PERIODS.forEach((period) => {
     const list = todayTasks.filter((task) => task.period === period.id).sort(byOrder);
     if (!list.length) {
+      if (state.settings.locked) return;
       wrap.insertAdjacentHTML(
         "beforeend",
         `<div class="task-list empty-list" data-period="${period.id}"><span class="empty-label">${period.label} · 暂无任务</span></div>`
@@ -908,6 +909,8 @@ function renderChrome() {
   const isTemplateView = state.settings.view === "templates";
   const addArea = $(".add-area");
   if (addArea) addArea.style.display = state.settings.locked ? "none" : "";
+  const tabs = $(".tabs");
+  if (tabs) tabs.style.display = state.settings.locked ? "none" : "";
   $("h1").textContent = isTemplateView ? "任务模板" : "今日任务";
   $(".progress-section").style.display = isTemplateView ? "none" : "";
   if (isTemplateView) {

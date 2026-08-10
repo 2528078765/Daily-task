@@ -219,6 +219,14 @@ button {
   display: none;
 }
 
+.sidebar.locked .tabs {
+  display: none;
+}
+
+.sidebar.locked .empty-list {
+  display: none;
+}
+
 .strip-progress {
   position: relative;
   width: 4px;
