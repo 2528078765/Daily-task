@@ -1,7 +1,7 @@
 {
   "name": "daily-task-sidebar",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "scripts": {
     "tauri": "tauri",
     "desktop:dist": "powershell -ExecutionPolicy Bypass -File sync-dist.ps1"
