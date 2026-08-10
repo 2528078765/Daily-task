@@ -924,11 +924,15 @@ function renderChrome() {
   $("#themeBtn").innerHTML = state.settings.theme === "dark"
     ? '<i data-lucide="sun"></i>'
     : '<i data-lucide="moon"></i>';
-  $("#lockBtn").innerHTML = state.settings.locked
+  const lockBtn = $("#lockBtn");
+  const settingsBtn = $("#settingsBtn");
+  lockBtn.style.display = state.settings.locked ? "none" : "";
+  settingsBtn.style.display = state.settings.locked ? "none" : "";
+  lockBtn.innerHTML = state.settings.locked
     ? '<i data-lucide="lock-open"></i>'
     : '<i data-lucide="lock"></i>';
-  $("#lockBtn").title = state.settings.locked ? "解锁" : "锁定";
-  $("#lockBtn").setAttribute("aria-label", state.settings.locked ? "解锁" : "锁定");
+  lockBtn.title = state.settings.locked ? "解锁" : "锁定";
+  lockBtn.setAttribute("aria-label", state.settings.locked ? "解锁" : "锁定");
   const dateInput = $("#taskDateInput");
   if (dateInput) dateInput.value = state.addDate;
   const dateLabel = state.addDate === todayKey() ? "" : `${shortDateLabel(state.addDate)} `;
